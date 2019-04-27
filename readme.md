@@ -18,3 +18,11 @@ Files:
 - inputeventcodes.pas conversion from input-event-codes.h.
 - InputUtils.pas some simple helper functions.
 - event.dpr a conversion from evtest.c, a simple program to show present event handlers and to check it.
+- rotary.pas a class to read rotary encoder, uses threads.
+- rotarytest.lpr a small program to test the TRotary class.
+
+#Commit    2 - 2019.04.27
+- Added a class to use Rotary Encoders and a test program.
+
+Commmit   1 - 2014.04.25
+- Initial release.
