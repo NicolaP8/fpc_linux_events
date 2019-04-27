@@ -1,50 +1,22 @@
 {
-  Linux Event Tester - for Rotary Encoder
+  Linux Event Tester
 
-  1.0    - 2019.04.24 - Nicola Perotto <nicola@nicolaperotto.it>
+  1.0     - 2019.04.24 - Nicola Perotto <nicola@nicolaperotto.it>
+                        Initial release, translated from evtest.c
+  1.0.1   - 2019.04.27 - Nicola Perotto <nicola@nicolaperotto.it>
+                        Little cleanup and not blocking read
 
 }
 {$I+,R+,Q+}
-{$DEFINE DEBUG}
 {$IFDEF FPC}
   {$MODE DELPHI}
 {$ENDIF}
 Program Event;
 
 uses
-  {$IFDEF FPC}CThreads, CMem, BaseUnix, {$ENDIF} Classes, SysUtils, RtlConsts,
+  {$IFDEF FPC}CThreads, CMem, BaseUnix,{$ELSE}CompileInDelphi,{$ENDIF} Classes, SysUtils, RtlConsts,
   IOCtl, Input, InputEventCodes, InputUtils
-  {$IFDEF DEBUG}, DebugMe{$ENDIF}
   ;
-
-{$IFNDEF FPC}//compilazione su Delphi
-Const
-  O_RDONLY = 0;
-
-Type
-  PSigActionRec = ^LongInt;
-  TRTLCriticalSection = integer;
-  cint = integer;
-  TIOCtlRequest = integer;
-// TIOCtlRequest = cInt;
-  QWord = Int64;
-  timeval     = record
-                 tv_sec:LongWord;
-                 tv_usec:LongWord;
-                end;
-
-Procedure InitCriticalSection(Var FCS); begin end;
-Procedure DoneCriticalSection(Var FCS); begin end;
-Procedure ClrScr; begin end;
-Procedure GotoXY(Const X,Y:integer); begin end;
-Function KeyPressed:Boolean; begin result := True; end;
-Function ReadKey:char; begin Result := #0; end;
-procedure DoIoCtlError(Ndx:Int64); begin end;
-Function FpOpen(filename:string; flags:longword):integer; begin result := 0; end;
-Function FpIOCtl(fHandle:integer; command:integer; data:pointer):integer; begin result := 0; end;
-Procedure FpClose(handle:integer); begin end;
-Function FpRead(fHandle:integer; Var data; size:integer):integer; begin result := 0; end;
-{$ENDIF}
 
 Const
   sIOCtlError = 'IOCtl failed. Request code %d.';
@@ -106,6 +78,7 @@ Const
     ''
   );
 
+ 
 Var
   SigOA, SigNA : PSigActionRec;
   Terminated : Boolean;
@@ -200,12 +173,6 @@ begin
   Name := Copy(StringBuffer, 1, Pos(#0, StringBuffer)); //copies from a C string to a wonderful Pascal string!
 	writeln('Input device name: ' + Name);
 
-{
-  writeln('EIOCTLDir ' + IntToStr(Low(EIOCTLDir)) + ' ' + IntToStr(High(EIOCTLDir)));
-  writeln('EIOCTLType ' + IntToStr(Low(EIOCTLType)) + ' ' + IntToStr(High(EIOCTLType)));
-  writeln('EIOCTLNumber ' + IntToStr(Low(EIOCTLNumber)) + ' ' + IntToStr(High(EIOCTLNumber)));
-  writeln('EIOCTLSize ' + IntToStr(Low(EIOCTLSize)) + ' ' + IntToStr(High(EIOCTLSize)));
-}
 	r := FpIOCtl(fHandle, Compose_IOC(_IOC_READ, Ord('E'), $20 + 0, SizeOf(LongWord)), @Active);
   if r < 0 then
     DoIoCtlError(EVIOCGBIT);
@@ -220,18 +187,18 @@ begin
 			k := FpIOCtl(fHandle, Compose_IOC(_IOC_READ, Ord('E'), $20 + i, SizeOf(EBits)), @EBits);
       if k < 0 then
         DoIoCtlError(EVIOCGBIT);
-        
+
+//print EVIOCGBIT data
 //for j := 0 to k -1 do write(Format('%2.2x ', [EBits[j]])); writeln;
 
 			for j := 0 to k * 8 -1 do begin //check only effective loaded bits
-//writeln(Format('%d %d %d ', [j, j div 8, j and 7, GetBit(EBits[j div 8], j and 7)]));
         if GetBit(EBits[j div 8], j and 7) then begin
 					case i of
           EV_KEY : begin
-    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the second it's the name... in the future!
+    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the last it's the name... in the future!
             end;
           EV_ABS : begin
-    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the second it's the name... in the future!
+    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the last it's the name... in the future!
               r := FpIOCtl(fHandle, Compose_IOC(_IOC_READ, Ord('E'), $40 + j, SizeOf(EAbs)), @EAbs);
               if r < 0 then
                 DoIoCtlError(EVIOCGABS);
@@ -249,7 +216,7 @@ begin
     					WriteLn(Format('    Event code %d $%4.4x (%s)', [j, j, RelativeNames[j]]));
             end;
           else begin
-    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the second it's the name... in the future!
+    					WriteLn(Format('    Event code %d $%4.4x (%d)', [j, j, j])); //the last it's the name... in the future!
             end;
           end; //case
         end; //if
@@ -260,20 +227,22 @@ begin
   WriteLn;
 	WriteLn('Testing ... (CTRL-C to exit)');
 
+  //the read will be non blocking, very important!
+  FpFcntl(fHandle, F_SETFL, O_NONBLOCK);
+
   Terminated := False;
 	while (not Terminated) do begin
 		r := FpRead(fHandle, ev, sizeof(TInput_Event) * MaxNumEvents);
-
-		if (r < Sizeof(TInput_Event)) and not Terminated then begin
-			writeln('Error reading events.');
-      Break;
-		end;
+    {
+      Because the non blocking read r can be negative, this is not an error!
+      Adjust the sleep to the frequency needed.
+    }
+    if r <= 0 then Sleep(0);
 
 		for i := 0 to (r div Sizeof(TInput_Event) - 1) do
 			if (ev[i].etype = EV_SYN) then begin
-				writeln(Format('Event: time %d.%6d, -------------- %d ------------',
+				writeln(Format('Event: time %d.%6d, -------------- %d ------------ EV_SYN',
 					[ev[i].time.tv_sec, ev[i].time.tv_usec, ev[i].code]));
-
 			end else if ((ev[i].etype = EV_MSC) and ((ev[i].code = MSC_RAW) or (ev[i].code = MSC_SCAN))) then begin
 				writeln(Format('Event: time %d.%6d, type %d (%s), code %d (%s), value %2x',
 					[ev[i].time.tv_sec, ev[i].time.tv_usec, ev[i].etype, 'evname', ev[i].code, 'evtype', ev[i].value]));
