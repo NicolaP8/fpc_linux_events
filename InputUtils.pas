@@ -10,7 +10,7 @@ Unit InputUtils;
 Interface
 
 Uses
-  {$IFDEF FPC}CMem, BaseUnix,{$ENDIF} SysUtils, IOCtl, Input, Classes;
+  {$IFDEF FPC}CMem, BaseUnix,{$ENDIF} SysUtils, Classes;
 
 {$IFNDEF FPC}//Syntax Check in Delphi IDE
 Type
